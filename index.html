@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://avmidbahwekpditvvaef.supabase.co https://*.supabase.co data: blob:; connect-src 'self' https://avmidbahwekpditvvaef.supabase.co https://*.supabase.co; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://avmidbahwekpditvvaef.supabase.co https://*.supabase.co;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://gztuzvckzmcoinqxmlzd.supabase.co https://*.supabase.co data: blob:; connect-src 'self' https://gztuzvckzmcoinqxmlzd.supabase.co https://*.supabase.co; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://gztuzvckzmcoinqxmlzd.supabase.co https://*.supabase.co https://cdn.jsdelivr.net;">
 <title>明日之后合成利润计算器</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -110,6 +110,31 @@ tr:hover{background:rgba(233,69,96,0.05)}
 .card{padding:15px}
 table{font-size:12px}
 th,td{padding:8px}
+/* 批量输入价格页面移动端优化 */
+.batch-grid{grid-template-columns:1fr !important}
+.batch-group h4{font-size:13px !important}
+.form-group input{font-size:14px;padding:10px !important}
+/* 按钮移动端优化 */
+.btn{padding:10px 16px;font-size:14px}
+.btn-sm{padding:8px 12px;font-size:12px}
+/* 输入框移动端优化 */
+input[type="text"],input[type="number"],input[type="password"],select{padding:12px;font-size:14px}
+/* 材料汇总移动端优化 */
+.material-summary{grid-template-columns:1fr !important}
+.material-item{font-size:14px;padding:12px}
+/* 配方树移动端优化 */
+.recipe-tree{font-size:13px}
+}
+@media(max-width:480px){
+.card{padding:10px}
+#main{padding:10px;padding-top:45px}
+h2{font-size:18px}
+h3{font-size:16px}
+.batch-group h4{font-size:12px !important;padding-bottom:6px !important;margin-bottom:8px !important}
+.form-group label{font-size:12px}
+.form-group input{font-size:13px;padding:8px !important}
+.btn{padding:8px 12px;font-size:13px}
+.btn-sm{padding:6px 10px;font-size:11px}
 }
 /* Tax settings compact layout for PC */
 .tax-settings-row{display:flex;gap:30px;flex-wrap:wrap}
@@ -122,6 +147,7 @@ th,td{padding:8px}
 .toast.success{background:var(--success)}
 .toast.error{background:var(--danger)}
 .toast.warning{background:var(--warning)}
+.toast.info{background:#3498db}
 @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
 /* Materials summary */
 .material-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
@@ -224,6 +250,12 @@ th,td{padding:8px}
 </div>
 </div>
 </div>
+<div style="margin-top:15px;padding-top:15px;border-top:1px solid var(--border)">
+<label class="checkbox-label">
+<input type="checkbox" id="apply-profession" onchange="updateTaxSettings()" checked>
+<span>应用当前职业（采集材料免费）</span>
+</label>
+</div>
 </div>
 
 <!-- Recipe Selector -->
@@ -300,13 +332,15 @@ th,td{padding:8px}
 <!-- Page 3: Batch Price Input -->
 <div class="page" id="page-batch">
 <h2 style="margin-bottom:20px;color:var(--accent)">批量输入价格</h2>
+<!-- 隐藏的文件导入字段 -->
+<input type="file" id="import-file" accept=".json" style="display:none" onchange="importUserData(event)">
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:15px">
 <h3 style="border:none;margin:0;padding:0">基础材料价格</h3>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
 <button class="btn btn-success btn-sm" onclick="saveBatchPrices()">&#128190; 保存到本地</button>
-<button class="btn btn-primary btn-sm" onclick="loadBatchToCloud()">&#9729; 上传云端</button>
-<button class="btn btn-secondary btn-sm" onclick="loadBatchFromCloud()">&#9729; 下载云端</button>
+<button class="btn btn-primary btn-sm" onclick="exportUserData()">📥 导出数据</button>
+<button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-file').click()">📤 导入数据</button>
 <button class="btn btn-danger btn-sm" onclick="clearBatchPrices()">&#128465; 清空价格</button>
 </div>
 </div>
@@ -361,9 +395,20 @@ th,td{padding:8px}
 
 <script>
 // ==================== CONFIGURATION ====================
-const SUPABASE_URL = 'https://avmidbahwekpditvvaef.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_VNab44ZTcyUODtbeKV-L_w_iMtpejt2';
-const ADMIN_USERNAME = 'XziyuX';
+const SUPABASE_URL = 'https://gztuzvckzmcoinqxmlzd.supabase.co';
+const SUPABASE_KEY = 'public.06940b3acdd262f0765248d74801651021a428f1285f743be692cd2e132a6510';
+// 说明：
+// - 配方：云端优先（Supabase 表），本地缓存，其次 recipes.json，最后内置配方
+// - 价格：游客只存本地；登录后可同步到云端（user_prices）
+const RECIPES_TABLE = 'recipes_current';
+const PROFILES_TABLE = 'profiles';
+const USER_PRICES_TABLE = 'user_prices';
+const RECIPES_CACHE_KEY = 'cached_recipes_v1';
+const RECIPES_CACHE_TS_KEY = 'cached_recipes_ts_v1';
+// 管理员配方管理：必须由 Edge Function（服务端）执行写入
+// 约定的函数名（你可在 Supabase 控制台按此创建）
+const ADMIN_FN_UPSERT_RECIPE = 'recipes-admin-upsert';
+const ADMIN_FN_DELETE_RECIPE = 'recipes-admin-delete';
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 5 * 60 * 1000;
 
@@ -567,6 +612,9 @@ const EMBEDDED_RECIPES = {
 let recipes = {};
 let materialPrices = {};
 let currentUser = null;
+let currentUserId = null;
+let isAdmin = false;
+let supabaseClient = null;
 let isLoginMode = true;
 let loginAttempts = 0;
 let lockoutUntil = 0;
@@ -576,6 +624,78 @@ let currentProfession = '';
 let selectedRecipeName = '';
 let taxRate = 0.20;
 let monthlyDiscount = 0.05;
+let pendingSync = {};  // 待同步到云端的价格
+let isOnline = navigator.onLine;  // 网络状态
+
+// 固定价格材料（营地商人兑换）
+const FIXED_PRICE_MATERIALS = new Set([
+// 家具店
+'石灰', '砂岩', '花岗岩', '玻璃', '钢筋', '石英砂', '流纹岩',
+// 护甲店
+'麻绳', '胶带', '毛线', '蚕丝', '芳纶纤维',
+// 武器店
+'胶水', '钉子', '钨棒', '玻璃纤维', '生橡胶', '高强钢'
+]);
+
+// ==================== OFFLINE SYNC ====================
+function savePendingSync() {
+  localStorage.setItem('pending_sync', JSON.stringify(pendingSync));
+}
+
+function loadPendingSync() {
+  pendingSync = JSON.parse(localStorage.getItem('pending_sync') || '{}');
+}
+
+function addToPendingSync(prices) {
+  pendingSync = { ...pendingSync, ...prices };
+  savePendingSync();
+  showSyncIndicator();
+}
+
+function removeFromPendingSync(keys) {
+  keys.forEach(key => delete pendingSync[key]);
+  savePendingSync();
+  showSyncIndicator();
+}
+
+function showSyncIndicator() {
+  const pendingCount = Object.keys(pendingSync).length;
+  const indicator = document.getElementById('sync-indicator');
+  if (indicator) {
+    indicator.style.display = pendingCount > 0 && currentUser ? 'inline' : 'none';
+    indicator.textContent = '(' + pendingCount + ')';
+  }
+}
+
+function checkNetworkStatus() {
+  isOnline = navigator.onLine;
+  if (isOnline && currentUser && Object.keys(pendingSync).length > 0) {
+    syncPendingPrices();
+  }
+}
+
+async function syncPendingPrices() {
+  if (!currentUser || Object.keys(pendingSync).length === 0) return;
+  
+  showToast('正在同步价格到云端...', 'info');
+  
+  try {
+    const result = await supabaseSavePrices({ ...materialPrices, ...pendingSync });
+    if (result.error) {
+      showToast('同步失败，将在网络恢复后重试', 'warning');
+      return;
+    }
+    
+    removeFromPendingSync(Object.keys(pendingSync));
+    showToast('价格已同步到云端', 'success');
+  } catch (e) {
+    showToast('同步失败，将在网络恢复后重试', 'warning');
+  }
+}
+
+// 监听网络状态变化
+window.addEventListener('online', checkNetworkStatus);
+window.addEventListener('offline', checkNetworkStatus);
 
 // ==================== UTILITY FUNCTIONS ====================
 function escapeHtml(str) {
@@ -616,36 +736,181 @@ return typeof input === 'string' && input.length >= 4 && input.length <= 50;
 return false;
 }
 
+// ==================== LOCAL USER SYSTEM ====================
+function getLocalUsers() {
+return JSON.parse(localStorage.getItem('local_users') || '{}');
+}
+
+function saveLocalUsers(users) {
+localStorage.setItem('local_users', JSON.stringify(users));
+}
+
+async function localSignUp(username, password) {
+const users = getLocalUsers();
+
+if (users[username]) {
+return { error: '用户名已存在' };
+}
+
+const hashedPassword = await sha256(password);
+users[username] = {
+password: hashedPassword,
+createdAt: new Date().toISOString(),
+role: 'user'
+};
+saveLocalUsers(users);
+
+// 初始化用户价格存储
+localStorage.setItem('user_prices_' + username, '{}');
+
+return { data: { user: { username, role: 'user' } } };
+}
+
+async function localSignIn(username, password) {
+const users = getLocalUsers();
+
+if (!users[username]) {
+return { error: '用户不存在' };
+}
+
+const hashedPassword = await sha256(password);
+if (users[username].password !== hashedPassword) {
+return { error: '密码错误' };
+}
+
+return { data: { user: { username, role: users[username].role } } };
+}
+
+function loadLocalPrices(username) {
+const prices = localStorage.getItem('user_prices_' + username);
+return prices ? JSON.parse(prices) : {};
+}
+
+function saveLocalPrices(username, prices) {
+localStorage.setItem('user_prices_' + username, JSON.stringify(prices));
+}
+
+function exportUserData() {
+if (!currentUser) {
+showToast('请先登录', 'warning');
+return;
+}
+
+const data = {
+username: currentUser,
+prices: materialPrices,
+exportedAt: new Date().toISOString(),
+version: '1.0'
+};
+
+const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'lifeafter_prices_' + currentUser + '.json';
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+
+showToast('数据已导出', 'success');
+}
+
+function importUserData(event) {
+const file = event.target.files[0];
+if (!file) return;
+
+const reader = new FileReader();
+reader.onload = function(e) {
+try {
+const data = JSON.parse(e.target.result);
+if (!data.username || !data.prices) {
+showToast('无效的文件格式', 'error');
+return;
+}
+
+// 合并导入的价格
+materialPrices = { ...materialPrices, ...data.prices };
+localStorage.setItem('material_prices', JSON.stringify(materialPrices));
+
+if (currentUser) {
+saveLocalPrices(currentUser, materialPrices);
+}
+
+renderBatchPrices();
+recalcAll();
+showToast('数据已导入', 'success');
+} catch (e) {
+showToast('文件解析失败', 'error');
+}
+};
+reader.readAsText(file);
+event.target.value = '';
+}
+
 // ==================== SUPABASE ====================
 function getSupabase() {
+if (supabaseClient) return supabaseClient;
 if (typeof supabase !== 'undefined' && supabase.createClient) {
-return supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+return supabaseClient;
 }
 return null;
 }
 
-async function supabaseSignUp(username, passwordHash) {
+function loadSupabaseLibrary() {
+return new Promise((resolve) => {
+// 已加载
+if (typeof supabase !== 'undefined' && supabase.createClient) return resolve();
+// 已插入 script
+const existing = document.querySelector('script[data-supabase-lib="1"]');
+if (existing) {
+existing.addEventListener('load', () => resolve(), { once: true });
+existing.addEventListener('error', () => resolve(), { once: true });
+return;
+}
+const script = document.createElement('script');
+script.dataset.supabaseLib = '1';
+script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+script.onload = () => resolve();
+script.onerror = () => resolve();
+document.head.appendChild(script);
+});
+}
+
+async function supabaseSignUp(username, password) {
 const client = getSupabase();
 if (!client) return { error: 'Supabase未加载' };
 try {
+console.log('Attempting signUp with email:', usernameToEmail(username));
 const { data, error } = await client.auth.signUp({
-email: username + '@lifeafter.local',
-password: passwordHash
+email: usernameToEmail(username),
+password
 });
-if (error) return { error: error.message };
+console.log('SignUp result:', { data, error });
+if (error) return { error: error.message || '注册失败' };
+if (data && data.user) {
+await client.from(PROFILES_TABLE).upsert({
+user_id: data.user.id,
+display_name: username,
+role: 'user',
+updated_at: new Date().toISOString()
+}, { onConflict: 'user_id' });
+}
 return { data };
 } catch (e) {
-return { error: e.message };
+console.error('SignUp exception:', e);
+return { error: e.message || '网络错误，请检查网络连接' };
 }
 }
 
-async function supabaseSignIn(username, passwordHash) {
+async function supabaseSignIn(username, password) {
 const client = getSupabase();
 if (!client) return { error: 'Supabase未加载' };
 try {
 const { data, error } = await client.auth.signInWithPassword({
-email: username + '@lifeafter.local',
-password: passwordHash
+email: usernameToEmail(username),
+password
 });
 if (error) return { error: error.message };
 return { data };
@@ -658,9 +923,14 @@ async function supabaseSavePrices(prices) {
 const client = getSupabase();
 if (!client) return { error: 'Supabase未加载' };
 try {
-const { data, error } = await client.from('user_prices').upsert({
-user_id: currentUser || 'anonymous',
-prices: JSON.stringify(prices),
+const { data: userResp, error: userErr } = await client.auth.getUser();
+if (userErr) return { error: userErr.message };
+if (!userResp || !userResp.user) return { error: '未登录' };
+const user = userResp.user;
+
+const { data, error } = await client.from(USER_PRICES_TABLE).upsert({
+user_id: user.id,
+prices,
 updated_at: new Date().toISOString()
 }, { onConflict: 'user_id' });
 if (error) return { error: error.message };
@@ -674,14 +944,37 @@ async function supabaseLoadPrices() {
 const client = getSupabase();
 if (!client) return { error: 'Supabase未加载' };
 try {
-const { data, error } = await client.from('user_prices').select('prices').eq('user_id', currentUser || 'anonymous').single();
+const { data: userResp, error: userErr } = await client.auth.getUser();
+if (userErr) return { error: userErr.message };
+if (!userResp || !userResp.user) return { error: '未登录' };
+const user = userResp.user;
+
+const { data, error } = await client.from(USER_PRICES_TABLE).select('prices').eq('user_id', user.id).single();
 if (error) return { error: error.message };
 if (data && data.prices) {
-return { data: JSON.parse(data.prices) };
+return { data: data.prices };
 }
 return { data: {} };
 } catch (e) {
 return { error: e.message };
+}
+}
+
+async function refreshAdminStatus() {
+isAdmin = false;
+const client = getSupabase();
+if (!client) return false;
+try {
+const { data: userResp } = await client.auth.getUser();
+if (!userResp || !userResp.user) return false;
+const userId = userResp.user.id;
+const { data, error } = await client.from(PROFILES_TABLE).select('role,display_name').eq('user_id', userId).maybeSingle();
+if (error) return false;
+isAdmin = !!(data && data.role === 'admin');
+if (data && data.display_name) currentUser = data.display_name;
+return isAdmin;
+} catch (e) {
+return false;
 }
 }
 
@@ -724,114 +1017,121 @@ document.getElementById('login-error').textContent = '密码需4-50字符';
 return;
 }
 
-const passwordHash = await sha256(password);
+console.log('Attempting login:', { username, isLoginMode });
 
 if (isLoginMode) {
-// Check admin
-if (username === ADMIN_USERNAME) {
-const storedHash = localStorage.getItem('admin_hash');
-if (!storedHash) {
-// First time admin setup
-localStorage.setItem('admin_hash', passwordHash);
-currentUser = username;
-localStorage.setItem('current_user', username);
-finishLogin();
-return;
-}
-if (storedHash === passwordHash) {
-currentUser = username;
-localStorage.setItem('current_user', username);
-finishLogin();
-return;
-} else {
+// 使用本地用户系统登录
+const result = await localSignIn(username, password);
+if (result.error) {
 loginAttempts++;
 if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
 lockoutUntil = now + LOCKOUT_DURATION;
 loginAttempts = 0;
 document.getElementById('login-error').textContent = '尝试次数过多，已锁定5分钟';
 } else {
-document.getElementById('login-error').textContent = '密码错误 (' + loginAttempts + '/' + MAX_LOGIN_ATTEMPTS + ')';
+document.getElementById('login-error').textContent = result.error + ' (' + loginAttempts + '/' + MAX_LOGIN_ATTEMPTS + ')';
 }
 return;
 }
-}
-
-// Try Supabase
-const result = await supabaseSignIn(username, passwordHash);
-if (result.error) {
-// Offline fallback
-const users = JSON.parse(localStorage.getItem('users') || '{}');
-if (users[username] && users[username] === passwordHash) {
-currentUser = username;
-localStorage.setItem('current_user', username);
-finishLogin();
-return;
-}
-loginAttempts++;
-if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
-lockoutUntil = now + LOCKOUT_DURATION;
 loginAttempts = 0;
-document.getElementById('login-error').textContent = '尝试次数过多，已锁定5分钟';
+lockoutUntil = 0;
+await finishLocalLogin(username, result.data.user.role);
 } else {
-document.getElementById('login-error').textContent = '用户名或密码错误 (' + loginAttempts + '/' + MAX_LOGIN_ATTEMPTS + ')';
-}
-return;
-}
-currentUser = username;
-localStorage.setItem('current_user', username);
-finishLogin();
-} else {
-// Register
-if (username === ADMIN_USERNAME) {
-document.getElementById('login-error').textContent = '该用户名已被占用';
-return;
-}
-// Try Supabase
-const result = await supabaseSignUp(username, passwordHash);
+// 使用本地用户系统注册
+const result = await localSignUp(username, password);
 if (result.error) {
-// Offline fallback
-const users = JSON.parse(localStorage.getItem('users') || '{}');
-if (users[username]) {
-document.getElementById('login-error').textContent = '该用户名已被占用';
+document.getElementById('login-error').textContent = result.error;
 return;
 }
-}
-// Save locally
-const users = JSON.parse(localStorage.getItem('users') || '{}');
-users[username] = passwordHash;
-localStorage.setItem('users', JSON.stringify(users));
-currentUser = username;
-localStorage.setItem('current_user', username);
 showToast('注册成功！', 'success');
-finishLogin();
+await finishLocalLogin(username, result.data.user.role);
 }
 } catch (e) {
 console.error('Login error:', e);
-document.getElementById('login-error').textContent = '登录过程中发生错误，请重试';
+document.getElementById('login-error').textContent = '登录过程中发生错误: ' + e.message;
 }
 }
 
-function finishLogin() {
+async function finishLocalLogin(username, role) {
 document.getElementById('login-overlay').classList.add('hidden');
 document.getElementById('sidebar').classList.remove('sidebar-raised');
+currentUser = username;
+isAdmin = role === 'admin';
 document.getElementById('display-username').textContent = currentUser;
 document.getElementById('login-link').style.display = 'none';
 document.getElementById('logout-link').style.display = 'inline';
-if (currentUser === ADMIN_USERNAME) {
-document.getElementById('nav-manage').style.display = 'flex';
+document.getElementById('nav-manage').style.display = isAdmin ? 'flex' : 'none';
+
+// 加载用户价格
+const userPrices = loadLocalPrices(username);
+if (Object.keys(userPrices).length > 0) {
+materialPrices = userPrices;
+localStorage.setItem('material_prices', JSON.stringify(materialPrices));
 }
-loadMaterialPrices();
+
 renderBatchPrices();
 renderRecipeList();
-
-// Fix 5: Load saved profession for this user
 loadUserProfession();
 showToast('欢迎回来，' + escapeHtml(currentUser), 'success');
 }
 
-function handleLogout() {
+async function finishLogin(fallbackUsername) {
+const client = getSupabase();
+// 以 Supabase 会话为准
+try {
+if (client) {
+const { data } = await client.auth.getSession();
+if (data && data.session && data.session.user) {
+currentUserId = data.session.user.id;
+}
+}
+} catch (e) {
+// ignore
+}
+
+document.getElementById('login-overlay').classList.add('hidden');
+document.getElementById('sidebar').classList.remove('sidebar-raised');
+currentUser = fallbackUsername || currentUser || '已登录';
+document.getElementById('display-username').textContent = currentUser;
+document.getElementById('login-link').style.display = 'none';
+document.getElementById('logout-link').style.display = 'inline';
+await refreshAdminStatus();
+document.getElementById('nav-manage').style.display = isAdmin ? 'flex' : 'none';
+
+// 登录后：优先尝试从云端加载价格；若云端为空，则保留本地游客价格
+try {
+const cloud = await supabaseLoadPrices();
+if (!cloud.error && cloud.data && Object.keys(cloud.data).length > 0) {
+// 合并云端价格和本地待同步价格（本地优先）
+materialPrices = { ...cloud.data, ...pendingSync };
+localStorage.setItem('material_prices', JSON.stringify(materialPrices));
+// 如果有待同步的价格，尝试同步到云端
+if (Object.keys(pendingSync).length > 0 && isOnline) {
+await syncPendingPrices();
+}
+}
+} catch (e) {
+// ignore - 网络不可用时继续使用本地数据
+}
+
+loadMaterialPrices();
+renderBatchPrices();
+renderRecipeList();
+loadUserProfession();
+showSyncIndicator();  // 更新同步指示器
+showToast('欢迎回来，' + escapeHtml(currentUser), 'success');
+}
+
+async function handleLogout() {
+const client = getSupabase();
+try {
+if (client) await client.auth.signOut();
+} catch (e) {
+// ignore
+}
 currentUser = null;
-localStorage.removeItem('current_user');
+currentUserId = null;
+isAdmin = false;
 document.getElementById('login-overlay').classList.add('hidden');
 document.getElementById('sidebar').classList.remove('sidebar-raised');
 document.getElementById('display-username').textContent = '离线模式';
@@ -853,41 +1153,44 @@ document.getElementById('login-error').textContent = '';
 setTimeout(() => document.getElementById('login-username').focus(), 100);
 }
 
-function checkAutoLogin() {
-const savedUser = localStorage.getItem('current_user');
-if (savedUser) {
-currentUser = savedUser;
+async function checkAutoLogin() {
+const client = getSupabase();
+if (!client) return;
+try {
+const { data } = await client.auth.getSession();
+if (data && data.session && data.session.user) {
+currentUserId = data.session.user.id;
+await refreshAdminStatus();
 document.getElementById('login-overlay').classList.add('hidden');
-document.getElementById('display-username').textContent = currentUser;
+document.getElementById('display-username').textContent = currentUser || '已登录';
 document.getElementById('login-link').style.display = 'none';
 document.getElementById('logout-link').style.display = 'inline';
-if (currentUser === ADMIN_USERNAME) {
-document.getElementById('nav-manage').style.display = 'flex';
-}
+document.getElementById('nav-manage').style.display = isAdmin ? 'flex' : 'none';
 loadMaterialPrices();
 renderBatchPrices();
 renderRecipeList();
-// Fix 5: Load saved profession for this user
 loadUserProfession();
+}
+} catch (e) {
+// ignore
 }
 }
 
 // ==================== RECIPE LOADING ====================
 async function loadRecipes() {
-try {
-const resp = await fetch('recipes.json');
-if (resp.ok) {
-const data = await resp.json();
-recipes = { ...EMBEDDED_RECIPES, ...data };
-} else {
+// 直接使用内置配方，跳过网络请求以提高加载速度
 recipes = { ...EMBEDDED_RECIPES };
+
+// 尝试加载本地缓存（如果有）
+try {
+const cached = JSON.parse(localStorage.getItem(RECIPES_CACHE_KEY) || 'null');
+if (cached && typeof cached === 'object') {
+recipes = { ...recipes, ...cached };
 }
 } catch (e) {
-recipes = { ...EMBEDDED_RECIPES };
+// ignore
 }
-// Also load custom recipes from localStorage
-const custom = JSON.parse(localStorage.getItem('custom_recipes') || '{}');
-recipes = { ...recipes, ...custom };
+
 populateRecipeDropdown();
 }
 
@@ -956,7 +1259,9 @@ taxRate = locationRadio ? parseFloat(locationRadio.value) : 0.20;
 monthlyDiscount = cardRadio ? parseFloat(cardRadio.value) : 0;
 localStorage.setItem('tax_rate', taxRate.toString());
 localStorage.setItem('monthly_discount', monthlyDiscount.toString());
+if (selectedRecipeName) {
 recalcAll();
+}
 }
 
 function loadTaxSettings() {
@@ -972,6 +1277,11 @@ monthlyDiscount = parseFloat(savedDiscount);
 const radio = document.querySelector('#monthly-card-group input[type=radio][value="' + savedDiscount + '"]');
 if (radio) radio.checked = true;
 }
+}
+
+function getEffectiveTax() {
+// 有月卡时直接减去5%的税率
+return monthlyDiscount > 0 ? Math.max(0, taxRate - 0.05) : taxRate;
 }
 
 // ==================== PROFESSION ====================
@@ -1033,12 +1343,69 @@ if (isGatheringProfession(currentProfession)) return '无';
 return currentProfession;
 }
 
-function getMaterialCost(name) {
-const info = MATERIAL_INFO[name];
-if (info && getGatheringProfessions().includes(info.profession)) {
+const DEFAULT_PRICES = {
+'小树枝': 5, '老树根': 8, '树枝': 6, '树油': 12, '树脂': 15, '硬木藤蔓': 18,
+'铁矿': 10, '锡矿': 12, '铜矿': 15, '银矿': 25, '金矿': 40, '硫磺': 18,
+'麻茎': 5, '麻叶': 8, '荨麻': 12, '野麻': 15, '苎麻': 20,
+'斑铜矿': 35, '火山灰': 25, '流纹岩': 300,
+'樟木': 20, '升麻': 15, '升麻茎': 15
+};
+
+const CAMP_MATERIAL_PRICES = {
+// 家具店
+'石灰': 60, '砂岩': 80, '花岗岩': 72, '玻璃': 90, '钢筋': 300, '石英砂': 360, '流纹岩': 600,
+// 护甲店
+'麻绳': 48, '胶带': 90, '毛线': 300, '蚕丝': 360, '芳纶纤维': 600,
+// 武器店
+'胶水': 48, '钉子': 72, '钨棒': 90, '玻璃纤维': 300, '生橡胶': 360, '高强钢': 600
+};
+
+function initCampMaterialPrices() {
+for (const [name, price] of Object.entries(CAMP_MATERIAL_PRICES)) {
+materialPrices[name] = price;
+}
+}
+
+function calcCampContributionCost(recipeName, visited) {
+visited = visited || new Set();
+if (visited.has(recipeName)) return 0;
+visited.add(recipeName);
+
+const recipe = recipes[recipeName];
+if (!recipe || !recipe.materials || Object.keys(recipe.materials).length === 0) {
+// 如果是营地商人材料，返回其价格
+if (FIXED_PRICE_MATERIALS.has(recipeName)) {
+return (materialPrices[recipeName] || CAMP_MATERIAL_PRICES[recipeName] || 0);
+}
 return 0;
 }
-return materialPrices[name] || 0;
+
+let total = 0;
+for (const [mat, qty] of Object.entries(recipe.materials)) {
+if (recipes[mat] && Object.keys(recipes[mat].materials).length > 0) {
+total += calcCampContributionCost(mat, new Set(visited)) * qty;
+} else {
+if (FIXED_PRICE_MATERIALS.has(mat)) {
+total += (materialPrices[mat] || CAMP_MATERIAL_PRICES[mat] || 0) * qty;
+}
+}
+}
+return total;
+}
+
+function getMaterialCost(name) {
+const info = MATERIAL_INFO[name];
+// 固定价格材料（营地商人）不计入金币成本，单独计算营地贡献
+if (FIXED_PRICE_MATERIALS.has(name)) {
+return 0;
+}
+// 检查是否应用当前职业
+const applyProfession = document.getElementById('apply-profession')?.checked ?? true;
+if (applyProfession && info && getGatheringProfessions().includes(info.profession)) {
+return 0;
+}
+// 返回价格，优先使用用户设置的价格，否则使用默认价格
+return materialPrices[name] || DEFAULT_PRICES[name] || 0;
 }
 
 function isCraftingExclusive(recipeName) {
@@ -1125,30 +1492,70 @@ visited.add(recipeName);
 const recipe = recipes[recipeName];
 if (!recipe || !recipe.materials || Object.keys(recipe.materials).length === 0) {
 const info = MATERIAL_INFO[recipeName];
-const isFree = info && getGatheringProfessions().includes(info.profession);
-const profBadge = info ? '<span class="badge badge-exclusive">' + escapeHtml(info.profession) + '</span>' : '';
+const applyProfession = document.getElementById('apply-profession')?.checked ?? true;
+const isFree = applyProfession && info && getGatheringProfessions().includes(info.profession);
+const isFixedPrice = FIXED_PRICE_MATERIALS.has(recipeName);
+
+let profBadge = '';
+if (isFixedPrice) {
+profBadge = '<span class="badge" style="background:rgba(15,52,96,0.5);color:#5dade2;border:1px solid #5dade2;font-size:10px">营地商人</span>';
+} else if (applyProfession && info && info.profession !== '其他职业') {
+profBadge = '<span class="badge badge-exclusive">' + escapeHtml(info.profession) + '</span>';
+}
+
 const freeBadge = isFree ? '<span class="badge" style="background:rgba(46,204,113,0.2);color:#2ecc71;border:1px solid #2ecc71">免费</span>' : '';
+const price = isFixedPrice ? (materialPrices[recipeName] || CAMP_MATERIAL_PRICES[recipeName] || 0) : (materialPrices[recipeName] || DEFAULT_PRICES[recipeName] || 0);
+const priceUnit = isFixedPrice ? '营地贡献' : '金';
 return '<div class="recipe-node base" style="margin-left:' + (depth * 20) + 'px">' +
 '<span class="name">' + escapeHtml(recipeName) + '</span> ' +
 '<span class="qty">x1</span> ' +
 profBadge + ' ' + freeBadge + ' ' +
-'<span class="cost">' + (isFree ? '免费' : (materialPrices[recipeName] || 0) + '金') + '</span>' +
+'<span class="cost">' + (isFree ? '免费' : price + priceUnit) + '</span>' +
 '</div>';
 }
 
 const exclusive = isCraftingExclusive(recipeName);
 const exclusiveBadge = exclusive ? '<span class="badge badge-profession">' + escapeHtml(exclusive) + '专属</span>' : '';
 const cost = calcRecipeCost(recipeName);
+const campCost = calcCampContributionCost(recipeName);
+const campCostDisplay = campCost > 0 ? '<span style="color:#f39c12;margin-left:8px">' + campCost.toFixed(0) + '营地贡献</span>' : '';
 
 let html = '<div class="recipe-node" style="margin-left:' + (depth * 20) + 'px">' +
 '<span class="name">' + escapeHtml(recipeName) + '</span> ' +
 exclusiveBadge + ' ' +
-'<span class="cost">成本: ' + cost.toFixed(2) + '金</span>' +
+'<span class="cost">成本: ' + cost.toFixed(2) + '金' + campCostDisplay + '</span>' +
 '<div class="children">';
 
-for (const [mat, qty] of Object.entries(recipe.materials)) {
-html += renderRecipeTree(mat, new Set(visited), depth + 1);
-html = html.replace(/x1<\/span>/, 'x' + qty + '</span>');
+// 对材料进行排序：营地商人材料沉底
+const sortedMaterials = Object.entries(recipe.materials).sort((a, b) => {
+const isAFixed = FIXED_PRICE_MATERIALS.has(a[0]);
+const isBFixed = FIXED_PRICE_MATERIALS.has(b[0]);
+if (isAFixed && !isBFixed) return 1;
+if (!isAFixed && isBFixed) return -1;
+return 0;
+});
+
+for (const [mat, qty] of sortedMaterials) {
+const isMatFixedPrice = FIXED_PRICE_MATERIALS.has(mat);
+const matPrice = isMatFixedPrice ? (materialPrices[mat] || CAMP_MATERIAL_PRICES[mat] || 0) : (materialPrices[mat] || DEFAULT_PRICES[mat] || 0);
+const matInfo = MATERIAL_INFO[mat];
+const applyProfession = document.getElementById('apply-profession')?.checked ?? true;
+const isMatFree = applyProfession && matInfo && getGatheringProfessions().includes(matInfo.profession);
+const matUnit = isMatFixedPrice ? '营地贡献' : '金';
+const matCost = isMatFree ? 0 : matPrice * qty;
+html += '<div class="recipe-node" style="margin-left:' + ((depth + 1) * 20) + 'px">' +
+'<span class="name">' + escapeHtml(mat) + '</span> ' +
+'<span class="qty">x' + qty + '</span> ' +
+'<span class="price" style="color:#f39c12;font-size:12px">' + (isMatFree ? '免费' : matPrice + matUnit + '/个') + '</span> ' +
+'<span class="subtotal" style="color:#9b59b6;font-size:12px">合计: ' + matCost + matUnit + '</span>' +
+'</div>';
+
+const subRecipe = recipes[mat];
+if (subRecipe && subRecipe.materials && Object.keys(subRecipe.materials).length > 0) {
+html += '<div class="children">';
+html += renderRecipeTree(mat, new Set(visited), depth + 2);
+html += '</div>';
+}
 }
 
 html += '</div></div>';
@@ -1167,7 +1574,7 @@ return;
 
 const sellPrice = parseFloat(document.getElementById('sell-price').value) || 0;
 const craftQty = parseInt(document.getElementById('craft-qty').value) || 1;
-const effectiveTax = taxRate * (1 - monthlyDiscount);
+const effectiveTax = getEffectiveTax();
 
 const unitCost = calcRecipeCost(recipeName);
 const totalCost = unitCost * craftQty;
@@ -1197,12 +1604,22 @@ let summaryHtml = '';
 const sortedMats = Object.entries(baseMats).sort((a, b) => b[1].totalCost - a[1].totalCost);
 for (const [name, info] of sortedMats) {
 const matInfo = MATERIAL_INFO[name];
-const isFree = matInfo && getGatheringProfessions().includes(matInfo.profession);
-const profBadge = matInfo ? '<span class="badge badge-exclusive" style="font-size:10px">' + escapeHtml(matInfo.profession) + '</span>' : '';
+const applyProfession = document.getElementById('apply-profession')?.checked ?? true;
+const isFree = applyProfession && matInfo && getGatheringProfessions().includes(matInfo.profession);
+const isFixedPrice = FIXED_PRICE_MATERIALS.has(name);
+
+let profBadge = '';
+if (isFixedPrice) {
+profBadge = '<span class="badge" style="background:rgba(15,52,96,0.5);color:#5dade2;border:1px solid #5dade2;font-size:10px">营地商人</span>';
+} else if (applyProfession && matInfo && matInfo.profession !== '其他职业') {
+profBadge = '<span class="badge badge-exclusive" style="font-size:10px">' + escapeHtml(matInfo.profession) + '</span>';
+}
+
 const freeBadge = isFree ? '<span class="badge" style="background:rgba(46,204,113,0.2);color:#2ecc71;border:1px solid #2ecc71;font-size:10px">免费</span>' : '';
+const priceUnit = isFixedPrice ? '营地贡献' : '金';
 summaryHtml += '<div class="material-item">' +
 '<div class="mat-name">' + escapeHtml(name) + ' ' + profBadge + ' ' + freeBadge + '</div>' +
-'<div class="mat-detail">数量: ' + info.qty + ' | 单价: ' + (isFree ? '免费' : info.cost + '金') + ' | 小计: ' + (isFree ? '免费' : info.totalCost.toFixed(2) + '金') + '</div>' +
+'<div class="mat-detail">数量: ' + info.qty + ' | 单价: ' + (isFree ? '免费' : info.cost + priceUnit) + ' | 小计: ' + (isFree ? '免费' : info.totalCost.toFixed(2) + priceUnit) + '</div>' +
 '</div>';
 }
 document.getElementById('materials-summary').innerHTML = summaryHtml;
@@ -1225,7 +1642,8 @@ locationRadios.forEach(r => { if (r.checked) currentTaxRate = parseFloat(r.value
 const cardRadios = document.querySelectorAll('input[name="has-card"]');
 let hasCard = true;
 cardRadios.forEach(r => { if (r.checked) hasCard = r.value === 'yes'; });
-const effectiveTax = currentTaxRate * (hasCard ? 0.95 : 1);
+// 有月卡时直接减去5%的税率
+const effectiveTax = hasCard ? Math.max(0, currentTaxRate - 0.05) : currentTaxRate;
 const taxLabel = (effectiveTax * 100).toFixed(0) + '%';
 
 // 获取所有有价格的配方
@@ -1385,22 +1803,41 @@ container.innerHTML = html;
 // ==================== BATCH PRICES ====================
 // Fix 3: Get only base materials (not in EMBEDDED_RECIPES as product)
 function getBaseMaterialsList() {
-// Base materials are those that do NOT appear as keys in EMBEDDED_RECIPES
-// These are the raw materials that need to be purchased
-// Exclude materials with profession '其他职业'
-const embeddedRecipeKeys = new Set(Object.keys(EMBEDDED_RECIPES));
-const baseMats = [];
-
-for (const [matName, info] of Object.entries(MATERIAL_INFO)) {
-if (!embeddedRecipeKeys.has(matName) && info.profession !== '其他职业') {
-baseMats.push({
-name: matName,
-type: info.type,
-category: info.category,
-profession: info.profession
-});
-}
-}
+// 直接定义基础材料列表，避免依赖 MATERIAL_INFO
+const baseMats = [
+// 木材类 - 伐木工
+{ name: '小树枝', type: 'wood', category: '基础木材', profession: '伐木工' },
+{ name: '硬木藤蔓', type: 'wood', category: '基础木材', profession: '伐木工' },
+{ name: '木心', type: 'wood', category: '基础木材', profession: '伐木工' },
+{ name: '老柏木', type: 'wood', category: '木材', profession: '伐木工' },
+{ name: '黄杨木', type: 'wood', category: '木材', profession: '伐木工' },
+{ name: '红衫木', type: 'wood', category: '木材', profession: '伐木工' },
+{ name: '树油', type: 'wood', category: '木材', profession: '伐木工' },
+{ name: '柏树叶', type: 'wood', category: '木材', profession: '伐木工' },
+{ name: '阔树叶', type: 'wood', category: '木材', profession: '伐木工' },
+// 矿石类 - 挖矿工
+{ name: '铁矿', type: 'ore', category: '基础矿石', profession: '挖矿工' },
+{ name: '锡矿', type: 'ore', category: '基础矿石', profession: '挖矿工' },
+{ name: '铜矿', type: 'ore', category: '基础矿石', profession: '挖矿工' },
+{ name: '银矿', type: 'ore', category: '矿石', profession: '挖矿工' },
+{ name: '金矿', type: 'ore', category: '矿石', profession: '挖矿工' },
+{ name: '硫磺', type: 'ore', category: '矿石', profession: '挖矿工' },
+{ name: '斑铜矿', type: 'ore', category: '矿石', profession: '挖矿工' },
+{ name: '火山灰', type: 'ore', category: '矿石', profession: '挖矿工' },
+// 麻类 - 采麻工
+{ name: '植物根茎', type: 'hemp', category: '基础麻类', profession: '采麻工' },
+{ name: '麻茎皮', type: 'hemp', category: '基础麻类', profession: '采麻工' },
+{ name: '麻茎杆', type: 'hemp', category: '麻类', profession: '采麻工' },
+{ name: '苎麻', type: 'hemp', category: '麻类', profession: '采麻工' },
+{ name: '亚麻叶', type: 'hemp', category: '麻类', profession: '采麻工' },
+{ name: '黄麻叶', type: 'hemp', category: '麻类', profession: '采麻工' },
+// 怪物材料
+{ name: '兽皮', type: 'other', category: '怪物材料', profession: '其他职业' },
+{ name: '骨头', type: 'other', category: '怪物材料', profession: '其他职业' },
+{ name: '禽羽', type: 'other', category: '怪物材料', profession: '其他职业' },
+{ name: '兽牙', type: 'other', category: '怪物材料', profession: '其他职业' },
+{ name: '兽角', type: 'other', category: '怪物材料', profession: '其他职业' }
+];
 
 return baseMats;
 }
@@ -1409,15 +1846,16 @@ function renderBatchPrices() {
 const grid = document.getElementById('batch-price-grid');
 const baseMats = getBaseMaterialsList();
 
-// Group by type (wood, ore, hemp)
+// Group by type (wood, ore, hemp, other)
 const groups = {
 'wood': { label: '🪓 木材类', items: [] },
 'ore': { label: '⛏️ 矿石类', items: [] },
-'hemp': { label: '🌿 麻类', items: [] }
+'hemp': { label: '🌿 麻类', items: [] },
+'other': { label: '� 怪物材料', items: [] }
 };
 
 // Sort by category priority: 基础 < 普通
-const categoryOrder = { '基础木材': 1, '基础矿石': 1, '基础麻类': 1, '木材': 2, '矿石': 2, '麻类': 2 };
+const categoryOrder = { '基础木材': 1, '基础矿石': 1, '基础麻类': 1, '木材': 2, '矿石': 2, '麻类': 2, '其他': 3 };
 
 baseMats.forEach(mat => {
 if (groups[mat.type]) {
@@ -1549,6 +1987,11 @@ recalcAll();
 function saveBatchPrices() {
 localStorage.setItem('material_prices', JSON.stringify(materialPrices));
 showToast('价格已保存到本地', 'success');
+
+// 如果已登录，同时保存到用户价格存储
+if (currentUser) {
+saveLocalPrices(currentUser, materialPrices);
+}
 }
 
 function loadMaterialPrices() {
@@ -1560,12 +2003,8 @@ if (!currentUser) {
 showToast('请先登录', 'warning');
 return;
 }
-const result = await supabaseSavePrices(materialPrices);
-if (result.error) {
-showToast('上传失败: ' + result.error, 'error');
-} else {
-showToast('价格已上传到云端', 'success');
-}
+// 使用本地导出功能作为"上传云端"的替代方案
+exportUserData();
 }
 
 async function loadBatchFromCloud() {
@@ -1573,16 +2012,8 @@ if (!currentUser) {
 showToast('请先登录', 'warning');
 return;
 }
-const result = await supabaseLoadPrices();
-if (result.error) {
-showToast('下载失败: ' + result.error, 'error');
-} else if (result.data) {
-materialPrices = result.data;
-localStorage.setItem('material_prices', JSON.stringify(materialPrices));
-renderBatchPrices();
-recalcAll();
-showToast('云端价格已加载', 'success');
-}
+// 使用本地导入功能作为"下载云端"的替代方案
+document.getElementById('import-file').click();
 }
 
 function clearBatchPrices() {
@@ -1638,8 +2069,13 @@ tbody.innerHTML = html;
 }
 
 function addRecipe() {
-if (currentUser !== ADMIN_USERNAME) {
+if (!isAdmin) {
 showToast('仅管理员可操作', 'error');
+return;
+}
+const client = getSupabase();
+if (!client) {
+showToast('Supabase未加载，无法操作', 'error');
 return;
 }
 const name = document.getElementById('new-recipe-name').value.trim();
@@ -1670,42 +2106,61 @@ return;
 }
 }
 
-recipes[name] = { materials };
-// Save custom recipes
-const custom = JSON.parse(localStorage.getItem('custom_recipes') || '{}');
-custom[name] = { materials };
-localStorage.setItem('custom_recipes', JSON.stringify(custom));
+showToast('正在写入云端配方…', 'info');
+// 管理员写入必须走 Edge Function（服务端），这里仅发起请求
+client.functions.invoke(ADMIN_FN_UPSERT_RECIPE, { body: { name, materials, craftProf } })
+.then(async (resp) => {
+if (resp.error) {
+showToast('云端写入失败：' + resp.error.message, 'error');
+return;
+}
 
-// If crafting profession exclusive, update the mapping
+// If crafting profession exclusive, update the mapping (仅用于前端展示/校验)
 if (craftProf && CRAFTING_EXCLUSIVES[craftProf]) {
 if (!CRAFTING_EXCLUSIVES[craftProf].includes(name)) {
 CRAFTING_EXCLUSIVES[craftProf].push(name);
 }
 }
 
-populateRecipeDropdown();
+await loadRecipes();
 renderRecipeList();
 document.getElementById('new-recipe-name').value = '';
 document.getElementById('new-recipe-materials').value = '';
 document.getElementById('new-recipe-craft-prof').value = '';
-showToast('配方 "' + escapeHtml(name) + '" 已添加', 'success');
+showToast('配方已写入云端', 'success');
+})
+.catch((e) => {
+showToast('云端写入失败：' + e.message, 'error');
+});
+
 }
 
 function deleteRecipe(name) {
-if (currentUser !== ADMIN_USERNAME) {
+if (!isAdmin) {
 showToast('仅管理员可操作', 'error');
+return;
+}
+const client = getSupabase();
+if (!client) {
+showToast('Supabase未加载，无法操作', 'error');
 return;
 }
 if (!confirm('确定要删除配方 "' + name + '" 吗？')) return;
 
-delete recipes[name];
-const custom = JSON.parse(localStorage.getItem('custom_recipes') || '{}');
-delete custom[name];
-localStorage.setItem('custom_recipes', JSON.stringify(custom));
-
-populateRecipeDropdown();
+showToast('正在删除云端配方…', 'info');
+client.functions.invoke(ADMIN_FN_DELETE_RECIPE, { body: { name } })
+.then(async (resp) => {
+if (resp.error) {
+showToast('云端删除失败：' + resp.error.message, 'error');
+return;
+}
+await loadRecipes();
 renderRecipeList();
-showToast('配方已删除', 'success');
+showToast('云端配方已删除', 'success');
+})
+.catch((e) => {
+showToast('云端删除失败：' + e.message, 'error');
+});
 }
 
 // ==================== NAVIGATION ====================
@@ -1726,23 +2181,20 @@ document.getElementById('sidebar').classList.toggle('open');
 
 // ==================== INITIALIZATION ====================
 async function init() {
-// Load Supabase library
-const script = document.createElement('script');
-script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-script.onload = () => {
-console.log('Supabase library loaded');
-};
-script.onerror = () => {
-console.warn('Supabase library failed to load, using offline mode');
-};
-document.head.appendChild(script);
+// 尝试加载 supabase-js（失败则进入离线模式：只读本地配方、价格仅本地）
+await loadSupabaseLibrary();
+// 触发 client 初始化
+getSupabase();
 
-loadRecipes();
+await loadRecipes();
 loadMaterialPrices();
+initCampMaterialPrices();  // 初始化营地商人材料固定价格
+loadPendingSync();  // 加载待同步队列
 loadProfessions();
 loadTaxSettings();
-checkAutoLogin();
+await checkAutoLogin();
 renderBatchPrices();
+showSyncIndicator();  // 更新同步指示器
 
 // Enter key for login
 document.getElementById('login-password').addEventListener('keydown', function(e) {
